@@ -1,0 +1,143 @@
+#!/bin/bash
+
+# constants
+QUALITY=29
+SCREEN_WIDTH=460
+SCREEN_HEIGHT=344
+
+# global variables
+CWD=$(dirname -- "$( readlink -f -- "$0" )")
+OUTDIR="$CWD/result"
+IMGDIR="$CWD/result/i"
+
+function press_key {
+    local key
+    if [[ "$1" =~ [0-9] ]]; then
+        key="key code $1"
+    else
+        key="keystroke \"$1\""
+    fi
+
+    osascript <<DOWN
+tell application "System Events" to $key using command down
+delay .03
+tell application "System Events" to $key
+DOWN
+}
+
+
+# Detect browser
+BROWSER=$(osascript <<BROWSERS 2>&1
+on is_running(appName)
+    tell application "System Events" to (name of processes) contains appName
+end is_running
+
+set browsers to {"Safari", "Chrome", "Opera", "Firefox", "Edge", "Yandex"}
+
+repeat with browser in browsers
+    if is_running(browser) then
+        tell application browser
+            if exists window "ZX Spectrum online emulator" then
+                log browser
+                activate
+                exit repeat
+            end if
+        end tell
+    end if
+end repeat
+
+BROWSERS
+)
+
+if [ -z "$BROWSER" ]; then
+    echo Cannot detect your browser.
+    exit 1
+else
+    echo "Your browser is $BROWSER."
+fi
+
+sleep 2
+
+# Try to detect Spectrum frame in the emulator window
+TMPFILE=$(mktemp)
+screencapture "$TMPFILE"
+
+WH=$(php -r '
+const FRAME_W = 1039;
+const FRAME_H = 808;
+const FRAME_COLOR = 0xFFFFFF;
+const FRAME_BORDER = 30;
+
+$im = imagecreatefrompng($_SERVER["argv"][1]);
+
+[$w, $h] = [imagesx($im), imagesy($im)];
+imagefilter($im, IMG_FILTER_GRAYSCALE);
+imagefilter($im, IMG_FILTER_EDGEDETECT);
+
+for ($y = 0; $y <= $h - FRAME_H; $y++) {
+    for ($x = 0; $x <= $w - FRAME_W; $x++) {
+        $is_frame = imagecolorat($im, $x, $y) === FRAME_COLOR;
+
+        for ($i = 1; $i<FRAME_W; $i+=2) {
+            $is_frame = 
+                $is_frame &&
+                imagecolorat($im, $x + $i, $y) === FRAME_COLOR &&
+                imagecolorat($im, $x + $i, $y + FRAME_H - 1) === FRAME_COLOR;
+
+            if (!$is_frame) {
+                break;
+            }
+        }
+
+        if ($is_frame) {
+            printf("%d,%d\n", intdiv($x, 2) + FRAME_BORDER, intdiv($y, 2) + FRAME_BORDER);
+            exit(0);
+        }
+    }
+}
+exit(1);
+' -- "$TMPFILE")
+
+exit_status=$?
+/bin/rm -f "$TMPFILE"
+
+if [ $exit_status -gt 0 ]; then
+    echo Cannot locate the frame.
+    exit 2
+else
+    echo "Frame located at $WH."
+fi
+
+
+# Enter into the section
+press_key 36
+
+mkdir -p "$IMGDIR"
+
+FRAME="$WH,$SCREEN_WIDTH,$SCREEN_HEIGHT"
+PREV_SUM=
+
+for (( i = 1;; i++ )); do
+    sleep 2
+    SH_NAME=$(printf "%03d" "$i").jpg
+    screencapture -R$FRAME "$TMPFILE"
+
+    SUM=$(sha1sum < "$TMPFILE")
+    echo "Got screeshot N$i (${SUM%% *})."
+
+    if [ "$SUM" = "$PREV_SUM" ]; then
+        echo End of section detected.
+        break
+    fi
+
+    PREV_SUM=$SUM
+    convert "$TMPFILE" -quality "$QUALITY" "$IMGDIR/$SH_NAME"
+
+    press_key A
+done
+
+/bin/rm -f "$TMPFILE"
+
+# Exit to menu
+
+press_key E
