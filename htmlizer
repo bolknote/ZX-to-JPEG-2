@@ -18,11 +18,11 @@ function press_key {
         key="keystroke \"$1\""
     fi
 
-    osascript <<DOWN
+    osascript <<PRESS
 tell application "System Events" to $key using command down
 delay .03
 tell application "System Events" to $key
-DOWN
+PRESS
 }
 
 
