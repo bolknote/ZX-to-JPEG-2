@@ -12,7 +12,7 @@ IMGDIR="$CWD/result/i"
 
 function press_key {
     local key
-    if [[ "$1" =~ [0-9] ]]; then
+    if [[ "$1" =~ ^[0-9]{2,}$ ]]; then
         key="key code $1"
     else
         key="keystroke \"$1\""
