@@ -62,6 +62,10 @@ sleep 2
 TMPFILE=$(mktemp)
 screencapture "$TMPFILE"
 
+# Detect if Retina screen
+system_profiler SPDisplaysDataType | grep -Fiq retina
+DIVIDER=$(( 2 - $? ))
+
 WH=$(php -r '
 const FRAME_W = 1039;
 const FRAME_H = 808;
